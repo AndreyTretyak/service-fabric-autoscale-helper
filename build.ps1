@@ -5,7 +5,7 @@
 
 ##
 #  Builds the source code and generates application package.
-#  You can also open the solution file in Visual Studio 2017 and build.
+#  You can also open the solution file in Visual Studio 2019 and build.
 ##
 
 param
@@ -26,7 +26,9 @@ param
     [string]$MSBuildFullPath,
 
     [ValidateSet('win7-x64','linux-x64')]    
-    [string]$Runtime = 'win7-x64'
+    [string]$Runtime = 'win7-x64',
+
+    [bool]$GenerateNuget
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +36,16 @@ $PSScriptRoot = Split-Path -Parent -Path $MyInvocation.MyCommand.Definition
 $NugetFullPath = join-path $PSScriptRoot "nuget.exe"
 $SrcRoot = join-path $PSScriptRoot "src\\AutoscaleManager"
 $SfProjRoot = join-path $PSScriptRoot "src\\AutoscaleManager\\AutoscaleManager"
+$LinuxOutFolder = join-path $PSScriptRoot "out\Release\linux-x64\AutoscaleManager\NodeManagerPkg"
+
+
+if($GenerateNuget -eq $true)
+{
+.\nuget.exe pack .\src\AutoscaleManager\AutoscaleManager\AutoscaleManagerWindows.nuspec -basePath .\out\Release\win7-x64 -OutputDirectory out\NugetPackages 
+.\nuget.exe pack .\src\AutoscaleManager\AutoscaleManager\AutoscaleManagerLinux.nuspec -basePath .\out\Release\linux-x64 -OutputDirectory out\NugetPackages 
+exit
+}
+
 
 
 if ($Target -eq "rebuild") {
@@ -51,12 +63,12 @@ if($MSBuildFullPath -ne "")
     }
 }
 
-# msbuild path not provided, find msbuild for VS2017
+# msbuild path not provided, find msbuild for VS2019
 if($MSBuildFullPath -eq "")
 {
-    if (${env:VisualStudioVersion} -eq "15.0" -and ${env:VSINSTALLDIR} -ne "")
+    if (${env:VisualStudioVersion} -eq "16.0" -and ${env:VSINSTALLDIR} -ne "")
     {
-        $MSBuildFullPath = join-path ${env:VSINSTALLDIR} "MSBuild\15.0\Bin\MSBuild.exe"
+        $MSBuildFullPath = join-path ${env:VSINSTALLDIR} "MSBuild\Current\Bin\MSBuild.exe"
     }
 }
 
@@ -71,13 +83,13 @@ if($MSBuildFullPath -eq "")
         $progFilesPath =  ${env:ProgramFiles}
     }
 
-    $VS2017InstallPath = join-path $progFilesPath "Microsoft Visual Studio\2017"
+    $VS2019InstallPath = join-path $progFilesPath "Microsoft Visual Studio\2019"
     $versions = 'Community', 'Professional', 'Enterprise'
 
     foreach ($version in $versions)
     {
-        $VS2017VersionPath = join-path $VS2017InstallPath $version
-        $MSBuildFullPath = join-path $VS2017VersionPath "MSBuild\15.0\Bin\MSBuild.exe"
+        $VS2019VersionPath = join-path $VS2019InstallPath $version
+        $MSBuildFullPath = join-path $VS2019VersionPath "MSBuild\Current\Bin\MSBuild.exe"
 
         if (Test-Path $MSBuildFullPath)
         {
@@ -87,23 +99,23 @@ if($MSBuildFullPath -eq "")
 
     if (!(Test-Path $MSBuildFullPath))
     {
-        Write-Host "Visual Studio 2017 installation not found in ProgramFiles, trying to find install path from registry."
+        Write-Host "Visual Studio 2019 installation not found in ProgramFiles, trying to find install path from registry."
         if(Test-Path -Path HKLM:\SOFTWARE\WOW6432Node)
         {
-            $VS2017VersionPath = Get-ItemProperty (Get-ItemProperty -Path HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\SxS\VS7 -Name "15.0")."15.0"
+            $VS2019VersionPath = Get-ItemProperty (Get-ItemProperty -Path HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\SxS\VS7 -Name "16.0")."16.0"
         }
         else
         {
-            $VS2017VersionPath = Get-ItemProperty (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\VisualStudio\SxS\VS7 -Name "15.0")."15.0"
+            $VS2019VersionPath = Get-ItemProperty (Get-ItemProperty -Path HKLM:\SOFTWARE\Microsoft\VisualStudio\SxS\VS7 -Name "16.0")."16.0"
         }
 
-        $MSBuildFullPath = join-path $VS2017VersionPath "MSBuild\15.0\Bin\MSBuild.exe"
+        $MSBuildFullPath = join-path $VS2019VersionPath "MSBuild\Current\Bin\MSBuild.exe"
     }
 }
 
 if (!(Test-Path $MSBuildFullPath))
 {
-    throw "Unable to find MSBuild installed on this machine. Please install Visual Studio 2017 or if its installed at non-default location, provide the full ppath to msbuild using -MSBuildFullPath parameter."
+    throw "Unable to find MSBuild installed on this machine. Please install Visual Studio 2019 or if its installed at non-default location, provide the full ppath to msbuild using -MSBuildFullPath parameter."
 }
 
 
@@ -133,5 +145,11 @@ $msbuildArgs = @(
     "/property:ReferenceRuntimeIdentifier=$Runtime"
     $args)
 & $msbuildFullPath $msbuildArgs
+
+if ($Runtime -eq "linux-x64")
+{
+    Set-Location -Path $LinuxOutFolder
+    (Get-Content .\ServiceManifest.xml ) -replace "NodeManager.exe" , "NodeManager" | Out-File -encoding ASCII ServiceManifest.xml
+}
 
 Set-location -Path $PSScriptRoot
